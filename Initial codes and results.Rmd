@@ -1,0 +1,132 @@
+---
+title: ''
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+# Loading libraries
+library(ggplot2)
+library(caret)
+```
+
+
+## Preparing dataset
+
+```{r}
+# Preparing data
+# From the root folder 
+root_folder = "Datasets_Healthy_Older_People"
+
+# Read all available directories
+data_dirs = list.files(path=root_folder)
+
+df_all <- data.frame()
+
+# Looping through all files and reading file by file
+for(folder in data_dirs) {
+  folder_path = file.path(root_folder, folder)
+  data_files = list.files(path=folder_path)
+  for (f in data_files) {
+    if(f != "README.txt") {
+      m_f = substr(f, nchar(f), nchar(f))
+      df = read.csv(file.path(folder_path, f), header = FALSE)
+      df$Sex = m_f 
+      df_all = rbind(df_all, df)
+    }
+  }
+}
+
+col_names <- c("Time", "AccFrontal", "AccVertical", "AccLateral", 
+               "Id", "RSSI", "Phase", "Frequency", "Activity", "Sex")
+names(df_all) <- col_names
+```
+
+
+
+```{r}
+head(df_all)
+```
+```{r}
+tail(df_all)
+```
+
+
+```{r}
+summary(df_all)
+```
+
+```{r}
+df_all$Time <- NULL
+```
+
+
+```{r}
+# Printing distribution of various activities
+
+levels = c("SitOnBed", "SitOnChair","Lying", "Ambulating")
+g <- ggplot(df_all, aes(x=Activity, fill=Sex))
+g <- g + geom_bar(position = "dodge")
+g <- g + scale_x_discrete(limits=c("1","2","3", "4"), labels=levels)
+g
+```
+
+```{r}
+# Displaying how Frequency is distributed across Gender
+g <- ggplot(df_all, aes(x=Frequency, fill=Sex))
+g <- g + geom_histogram(position = "dodge")
+g
+```
+
+```{r}
+# Displaying how Frequency is distributed across various activity
+g <- ggplot(df_all, aes(x=as.factor(Activity), y = Frequency))
+g <- g + geom_boxplot() + xlabel("Activity")
+g
+```
+
+```{r}
+# Displaying relationship across acceleration in various directions
+pairs(df_all[, c("AccFrontal", "AccVertical", "AccLateral")])
+```
+
+```{r}
+# Converting it as categorical variable
+df_all$Activity <- factor(df_all$Activity)
+y <- df_all$Activity
+# Splitting data into train and test set
+index <- createDataPartition(y = df_all$Activity, p = 0.70, list = FALSE)
+X_train <- df_all[index, ]
+X_test <- df_all[-index, ]
+
+y_train <- y[index]
+y_test <- y[-index]
+```
+
+
+```{r}
+# fitting random forest model on the train data set
+rf <- train(Activity ~., data = X_train, method = "rf", metric='Accuracy')
+
+# Predicting it on the test set
+rf_pred <- predict(knn, newdata = X_test )
+
+# Evaluating model performance
+confusionMatrix(rf_pred, X_test$Activity )
+```
+
+```{r}
+# fitting knn model on the train data set
+knn <- train(Activity ~., data = X_train, method = "knn",  
+             preProcess = c("center","scale"), tuneLength = 20)
+
+# Predicting it on the test set
+knn_pred <- predict(knn, newdata = X_test )
+
+# Evaluating model performance
+confusionMatrix(knn_pred, X_test$Activity )
+```
+
