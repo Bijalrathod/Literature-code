@@ -1,0 +1,473 @@
+---
+title: "Final_Sol"
+author: 'Name:'
+date: "18/11/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Introduction
+
+The data is Activity recognition with healthy older people using a batteryless wearable sensor. There are eight features,
+
+Column 1: Time in seconds Column 2: Acceleration reading in G for frontal axis Column 3: Acceleration reading in G for vertical axis Column 4: Acceleration reading in G for lateral axis Column 5: Id of antenna reading sensor Column 6: Received signal strength indicator (RSSI) Column 7: Phase Column 8: Frequency The class variable is,
+
+Column 9: Label of Activity, 1: sit on bed, 2: sit on chair, 3: lying, 4: ambulating
+
+Only one person’s activities will be analyzed, a 60 year old female.
+
+## Problem Statement
+This project is to build a model that predicts human activities such as sit on bed,sit on chair, lying, accurately from smartphone measurement. The dataset used to train the model is collected from older people performing different activities , and recorded with the help of sensors. 
+
+
+## Data collection
+Download dataset from: https://archive.ics.uci.edu/ml/datasets/Activity+recognition+with+healthy+older+people+using+a+batteryless+wearable+sensor
+
+
+```{r load library, message=FALSE}
+library(plyr)
+library(tidyverse)
+library(ggplot2)
+library(lubridate)
+library(patchwork)
+library(gridExtra)
+library(psych)
+library(corrplot)
+library(ggfortify)
+library(cluster)
+library(factoextra)
+library(VIM)
+library(robustHD)
+library(car)
+library(e1071)
+library(arm)
+library(pROC)
+library(e1071)
+library(caret)
+library(class)
+library(caTools)
+library(gmodels)
+##################
+library(tidyverse)
+library(data.table)
+library(class)  # kNN 
+library(gmodels) # CrossTable
+library(plyr)
+library(tidyverse)
+library(ggplot2)
+library(lubridate)
+library(patchwork)
+library(gridExtra)
+library(psych)
+library(corrplot)
+library(ggfortify)
+library(cluster)
+library(factoextra)
+library(VIM)
+library(robustHD)
+library(dplyr)          # data wrangling
+library(ggplot2)        # visualization
+library(Rtsne)          # EDA
+library(caret)          # machine learning functions
+library(MLmetrics)      # machine learning metrics
+library(e1071)          # naive bayes
+library(rpart)          # decision tree
+library(rattle)         # tree visualization
+library(class)          # k-NN
+library(randomForest)   # random forest
+```
+
+
+
+## Data Preprocess before modeling
+
+y
+
+
+## Data collection
+
+Download dataset from: https://archive.ics.uci.edu/ml/datasets/Activity+recognition+with+healthy+older+people+using+a+batteryless+wearable+sensor
+
+
+
+```{r}
+setwd("C:\\Users\\Absas-LE0379\\Desktop\\ABSAS\\data analytics and business intelligence\\1111Human-Activity-Recognition-with-Smartphones-main\\updated\\dataset")
+
+files.1 <- list.files('S1_Dataset/')
+files.2 <- list.files('S2_Dataset/')
+files.1 <- paste0('S1_Dataset/', files.1[-length(files.1)])  # do not read the readme files
+files.2 <- paste0('S2_Dataset/', files.2[-length(files.2)])
+ReadData <- function(file_name) {
+  
+  data <- read_csv(file_name, col_names = c("Time", "Acceleration.front", "Acceleration.vert","Acceleration.lat","Sensor","RSSI","Phase","Frequency","Activity"))
+  file.name <- str_split(file_name, "/", simplify = TRUE, n = 5)
+  data['Gender'] <- as.integer(ifelse(str_sub(file.name[5], -1) == "F", 0, 1))
+  
+  return(data)
+}
+data.1 <- do.call(rbind, lapply(files.1, ReadData))
+data.2 <- do.call(rbind, lapply(files.2, ReadData))
+data <- rbind(data.1, data.2)
+```
+
+
+```{r}
+write.csv(data, "dataFinal.csv")
+```
+
+```{r}
+#Check the percentage of Missing values 
+missing_values <- data %>% summarize_all(funs(sum(is.na(.))/n()))
+gather(missing_values, key="feature", value="missing_pct")
+
+
+#####################
+#look for na
+sum(is.na(data))
+```
+
+
+```{r}
+head(data)
+data$Activity <- factor(data$Activity)
+levels(data$Activity) <- c("sit on bed", "sit on chair", "lying", "ambulating")
+data$Sensor <- factor(data$Sensor)
+dim(data)
+```
+
+# Data visulization 
+
+
+```{r}
+ggplot(data, aes(x = data$Activity)) +
+  geom_bar(fill = "steelblue") +
+  scale_x_discrete(limits = c("sit on bed", "sit on chair", "lying", "ambulating"),
+                   labels = c("sit on bed", "sit on chair", "lying", "ambulating"))
+ggplot(data, aes(x = Activity, y = data$Time)) +
+  geom_jitter(color="darkgreen") +
+  scale_x_discrete(limits = c("sit on bed", "sit on chair", "lying", "ambulating"),
+                   labels = c("sit on bed", "sit on chair", "lying", "ambulating"))
+```
+
+
+
+```{r}
+participant <- data[ , c(-5, -9, -10)]
+#participant <- data
+
+```
+
+
+
+```{r}
+##Normalizing features so that they are all equally weighted, using Min-Max normalization.
+normalize <- function(x){
+  ((x-min(x)) / (max(x) - min(x)))
+}
+
+participant_n <- as.data.frame(
+  lapply(participant[1:7], normalize)
+)
+
+participant <- cbind(participant[7], participant_n)
+
+rm(participant_n)
+```
+
+
+```{r}
+#Randomizing order of the dataframe, then making training and test sets and label sets. 80% of the observations are used for training, with the remaining 20% left for testing.
+
+participant <- participant[sample(1:nrow(participant)), ]
+
+training_set_length <- round(nrow(participant)*.8)
+
+training_set <- participant[1:training_set_length, -1]
+testing_set <- participant[(training_set_length+1):nrow(participant) , -1]
+
+training_labels <- participant[1:training_set_length, 1]
+testing_labels <- participant[(training_set_length+1):nrow(participant) , 1]
+
+
+
+```
+
+
+
+```{r}
+#Training the model
+#For the first iteration of kNN, k = 27, the root of the length of the training set.
+library(class); library(gmodels); library(tictoc)
+#install.packages("tictoc")
+tic()
+
+print("k = 27")
+participant_pred27 <- knn(train = training_set, test = testing_set, cl = training_labels, k=27)
+
+toc()
+
+
+## Evaluating model performance
+#The model performance is poor, never once correctly identifying when the participant was ambulating. 
+#The accuracy of correctly identifying the other activities ranged from 70% to 100%. Since lying made up the bulk of the participant’s activities, the model seems to be biased towards that.
+
+CrossTable(x = testing_labels, y = participant_pred27, 
+           prop.chisq=F, prop.c = F, prop.t = F)
+
+```
+
+#Improving model performance
+Smaller k’s chosen to lessen the impact of the more common labels. The following are k = 3 and 1. Comparing the Confusion Matrices, k=1 is superior to k=3. Although the accuracy of identifying sitting on bed drops from 80% to 77%, sitting in chair and lying retain their high accuracies, and the accuracy of ID’ing ambulating jumps from 33% to 56%.
+
+
+```{r}
+participant_pred3 <- knn(train = training_set, test = testing_set, cl = training_labels, k=3)
+
+toc()
+
+CrossTable(x = testing_labels, y = participant_pred3, 
+           prop.chisq=F, prop.c = F, prop.t = F)
+
+
+
+```
+
+## Classification model
+
+
+```{r models}
+
+library(arm)
+library(pROC)
+library(e1071)
+library(caret)
+library(rpart)
+library(rpart.plot)
+#library(rattle)
+library(randomForest)
+library(repmis)
+library(corrplot)
+
+```
+
+
+```{r}
+data$Activity <- factor(data$Activity)
+#levels(data$activity) <- c("sit on bed", "sit on chair", "lying", "ambulating")
+
+#Lying and sitting in bed made up the bulk of this person's activities, at 66.5% and 26.2% respectively.
+round(table(data$Activity) / length(data$Activity) , 3)
+```
+
+
+iMPORT dataset
+```{r}
+uci_har <- read.csv("df.csv")
+dim(uci_har)
+```
+
+
+```{r}
+uci_har$Activity <- factor(uci_har$Activity)
+levels(uci_har$Activity) <- c("sit on bed", "sit on chair", "lying", "ambulating")
+```
+
+- subject feature denotes the person id. There are 30 unique ids, each for one of 30 people.
+
+- Activity feature represents the activity a subject was doing, consists of:
+
+1: sit on bed, 2: sit on chair, 3: lying, 4: ambulating
+
+
+## Data Cleaning
+First, convert the subject and Activity features into factor, others into numeric.
+
+```{r}
+uci_har <- uci_har %>% 
+  mutate_at(c('subject', 'Activity'), as.factor) %>% 
+  mutate_at(vars(-subject, -Activity), as.numeric)
+
+lvl <- levels(uci_har$Activity)
+lvl
+```
+
+Let’s check if there are any duplicated observations or missing values.
+
+```{r}
+cat("Number of duplicated rows:", sum(duplicated(uci_har)))
+cat("Number of missing values:", sum(is.na(uci_har)))
+```
+
+Great! None of them exists. Now let’s check data imbalance.
+
+
+
+## Metrics
+We use accuracy to quantify the performance of our models after considering the following reasons:
+
+as per the problem statement, we are only interested in predicting each class equally and accurately without preferring one above the others, hence discrediting the purpose of recall and precision metrics.
+this problem is a multiclass classification, where accuracy is more commonly used and more interpretable than ROC-AUC metrics.
+
+## Modeling
+First, as a sanity check, let’s see the dimension of the dataset, alos maximum and minimum value in each feature.
+
+
+
+### Dataset Splitting for Training and Cross Validation.
+In addition to the previous manipulations over the original dataset, the dataset has been splitted in two groups, one for training and another for testing. We used 75% of the data for training purposes and the remaining 25% for testing in a cross validation scenario to estimate the generalization error of the model to be constructed for prediction.
+
+```{r}
+inTrain = createDataPartition(uci_har$Activity, p = 0.75, list=FALSE)
+training = data[ inTrain,]
+testing = data[-inTrain,]
+```
+
+## Model building with Training Data
+Because of the characteristic noise in the sensor data, we used a Random Forest approach to find a suitable model to describe our training data and then apply it to the testing set, and preform the final predictions over the unlabelled data. Rendom Forest algorithms are characterized by a subset of features, selected in a random and independent manner with the same distribution for each of the trees in the forest. We use VarImp() function to have an insight of the layered importance of the different features in the dataset, according to the judgement of our prediction model.
+
+```{r}
+library(randomForest)
+set.seed(298374)
+modFit <- randomForest(Activity~., data=training, importance=FALSE)
+b<- varImp(modFit)
+rev(order(b))
+
+```
+
+```{r}
+predictionsTrainingData <- predict(modFit,newdata=training)
+confusionMatrix(predictionsTrainingData, training$Activity)
+```
+
+We can see from the confusion matrix that the preformance of the algorithm is extremely possitive over the training data, with an accuracy of 100% in classification.
+
+
+## Cross Validating Model with Unlabelled Testing Set.
+In order to estimate the generalization error of our model or, in other words, how it will behave in data external to the one used to train the system, we predict the outcome Activity based on the testing data that we have left out from the begining of our analysis and then compare these predictions with the ground truth.
+
+
+```{r}
+predictionsTestingData <- predict(modFit,newdata=testing)
+confusionMatrix(predictionsTestingData, testing$Activity)
+```
+
+The Accuracy obtained is very acceptable with a value of 99.9%. The expected error is 0.1% which is the error level we should expect from future predictions of data.
+
+
+```{r}
+set.seed(2072) # for reproducibility
+subject_id <- unique(uci_har$subject)
+folds <- sample(1:5, 75128, replace = TRUE)
+d <- data.frame(col1 = c(subject_id), col2 = c(folds))
+uci_har$folds <- d$col2[match(uci_har$subject, d$col1)]
+uci_har <- uci_har %>% 
+  mutate(folds = as.factor(folds))
+```
+
+
+```{r}
+crossvalidate <- function(data, k, model_name,
+                          tuning = FALSE, mtry = NULL, nodesize = NULL) {
+  # 'data' is the training set with the 'folds' column
+  # 'k' is the number of folds we have
+  # 'model_name' is a string describing the model being used
+  # 'tuning' is a mode in which this function will operate, tuning = TRUE means we are doing hyperparameter tuning
+  # 'mtry' and 'nodesize' are used only in Random Forest hyperparameter tuning
+  
+  # initialize empty lists for recording performances
+  acc_train <- c()
+  acc_test <- c()
+  y_preds <- c()
+  y_tests <- c()
+  models <- c()
+  
+  # one iteration per fold
+  for (fold in 1:k) {
+    
+    # create training set for this iteration
+    # subset all the datapoints where folds does not match the current fold
+    training_set <- data %>% filter(folds != fold)
+    X_train <- training_set
+    y_train <- training_set$Activity
+    
+    # create test set for this iteration
+    # subset all the datapoints where folds matches the current fold
+    testing_set <- data %>% filter(folds == fold)
+    X_test <- testing_set 
+    y_test <- testing_set$Activity
+    
+    # train & predict
+    switch(model_name,
+      nb = {
+        model <- naiveBayes(x = X_train, y = y_train, laplace = 1)
+        y_pred <- predict(model, X_test, type = 'class')
+        y_pred_train <- predict(model, X_train, type = 'class')
+      },
+
+
+      {
+        print("Model is not recognized. Try to input 'nb', 'dt', 'knn', or 'rf'.")
+        return()
+      }
+    )
+    
+    # populate corresponding lists
+    acc_train[fold] <- Accuracy(y_pred_train, y_train)
+    acc_test[fold] <- Accuracy(y_pred, y_test)
+    y_preds <- append(y_preds, y_pred)
+    y_tests <- append(y_tests, y_test)
+    models <- c(models, list(model))
+  }
+  
+  # convert back to factor
+  y_preds <- factor(y_preds, labels = lvl)
+  y_tests <- factor(y_tests, labels = lvl)
+  
+  # get the accuracy between the predicted and the observed
+  cm <- confusionMatrix(y_preds, y_tests)
+  cm_table <- cm$table
+  acc <- cm$overall['Accuracy']
+  
+  # return the results
+  if (model_name == 'knn') {
+    return(list('cm' = cm_table, 'acc' = acc, 'acc_train' = acc_train, 'acc_test' = acc_test))
+  } else {
+    return(list('cm' = cm_table, 'acc' = acc, 'acc_train' = acc_train, 'acc_test' = acc_test, 'models' = models))
+  }
+}
+```
+
+```{r}
+nb <- crossvalidate(uci_har, 5, 'nb')
+cat("Naive Bayes Accuracy:", nb$acc)
+```
+
+Naive Bayes model gives best result with 99.5% accuracy
+
+Let’s see the confusion matrix below.
+
+```{r}
+nb$cm
+```
+
+
+Lastly, as can be seen below, based on the accuracy resulted from predicting train and test dataset, we could see that the model is already decent, not underfit or overfit to train dataset except for the fourth fold. Hence, we couldn’t rely much on trading off bias and variance to improve the model performance.
+
+```{r}
+print(nb$acc_train)
+print(nb$acc_test)
+```
+
+
+Based on the accuracy table above, Random Forest & Naive bayes are clearly wins as the best model. Random Forest is able to recognize human activities based on their behavior with an outstanding 99% accuracy. 
+
+
+
+
+
+
+
+
